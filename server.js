@@ -206,11 +206,11 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'Sandesh Portfolio API is running 🚀', version: '2.0.0' });
 });
 
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString(), uptime: process.uptime() });
 });
 
-app.post('/submit-form', contactLimiter, async (req, res) => {
+app.post('/api/submit-form', contactLimiter, async (req, res) => {
   const { firstName, lastName, email, project, message } = req.body;
 
   // ── Validate inputs ────────────────────────────────────────────────────────
@@ -269,7 +269,7 @@ app.post('/submit-form', contactLimiter, async (req, res) => {
 
 
 // ─── LeetCode Stats Proxy ─────────────────────────────────────────────────────
-app.get('/leetcode/:username', async (req, res) => {
+app.get('/api/leetcode/:username', async (req, res) => {
   const { username } = req.params;
   try {
     const body = JSON.stringify({
