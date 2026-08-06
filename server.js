@@ -11,8 +11,25 @@ const PORT = process.env.PORT || 5000;
 
 // ─── Security Middleware ─────────────────────────────────────────────────────
 app.use(helmet());
+
+const defaultOrigins = [
+  'https://patelsandesh.netlify.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+];
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : defaultOrigins;
+
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
+  origin: (origin, callback) => {
+    // allow requests with no origin (curl, server-to-server, health checks)
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    console.warn(`⚠️  CORS blocked request from origin: ${origin}`);
+    return callback(new Error('Not allowed by CORS'));
+  },
   methods: ['GET', 'POST'],
   optionsSuccessStatus: 200,
 }));
@@ -137,65 +154,101 @@ const buildAutoReply = (data) => `
 <title>Got your message!</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#f5f1eb; font-family:'Segoe UI',Arial,sans-serif; padding:40px 20px; }
+  body { background:#eef0f4; font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif; padding:32px 16px; }
   .wrapper { max-width:560px; margin:0 auto; }
-  .card { background:#ffffff; border-radius:20px; overflow:hidden; box-shadow:0 8px 40px rgba(0,0,0,0.08); }
-  .header { background:linear-gradient(135deg,#f97316,#f59e0b); padding:40px 36px; text-align:center; }
-  .avatar { width:70px; height:70px; background:rgba(255,255,255,0.2); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; font-size:1.8rem; border:3px solid rgba(255,255,255,0.4); }
-  .header h1 { color:white; font-size:1.4rem; font-weight:700; margin-bottom:6px; }
-  .header p { color:rgba(255,255,255,0.85); font-size:0.88rem; line-height:1.5; }
-  .body { padding:36px; }
-  .greeting { font-size:1.1rem; font-weight:600; color:#1a1206; margin-bottom:16px; }
-  .para { color:#5c4a2a; font-size:0.92rem; line-height:1.75; margin-bottom:16px; }
-  .highlight-box { background:linear-gradient(135deg,#fff7ed,#fef3c7); border:1px solid rgba(249,115,22,0.2); border-radius:12px; padding:20px 24px; margin:24px 0; }
-  .highlight-box p { color:#92400e; font-size:0.88rem; line-height:1.65; }
-  .highlight-box strong { color:#f97316; }
-  .divider { height:1px; background:#f5ead8; margin:24px 0; }
-  .footer { padding:24px 36px 32px; text-align:center; background:#fef9f0; border-top:1px solid #f5ead8; }
-  .footer p { color:#8c7355; font-size:0.78rem; line-height:1.6; }
-  .footer a { color:#f97316; text-decoration:none; }
-  .social-links { display:flex; justify-content:center; gap:12px; margin-top:16px; }
-  .social-btn { display:inline-block; background:#fff; border:1px solid #f5ead8; color:#5c4a2a; padding:7px 16px; border-radius:100px; font-size:0.78rem; font-weight:600; text-decoration:none; }
-  .signature { display:flex; align-items:center; gap:12px; margin-top:8px; }
-  .sig-dot { width:40px; height:40px; background:linear-gradient(135deg,#f97316,#f59e0b); border-radius:10px; display:flex; align-items:center; justify-content:center; color:white; font-weight:700; font-size:0.9rem; flex-shrink:0; }
+
+  /* Outer glow card */
+  .card { background:#ffffff; border-radius:24px; overflow:hidden; box-shadow:0 20px 60px rgba(15,23,42,0.10), 0 2px 8px rgba(15,23,42,0.06); }
+
+  /* Header */
+  .header { position:relative; background:linear-gradient(135deg,#fb923c 0%,#f97316 45%,#ea580c 100%); padding:44px 36px 56px; text-align:center; overflow:hidden; }
+  .header::before { content:''; position:absolute; top:-60px; right:-60px; width:180px; height:180px; background:rgba(255,255,255,0.12); border-radius:50%; }
+  .header::after { content:''; position:absolute; bottom:-80px; left:-40px; width:160px; height:160px; background:rgba(255,255,255,0.08); border-radius:50%; }
+  .status-pill { display:inline-block; background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.35); color:#fff; font-size:0.7rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; padding:6px 14px; border-radius:100px; margin-bottom:18px; position:relative; z-index:1; }
+  .avatar { width:64px; height:64px; background:rgba(255,255,255,0.22); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 18px; font-size:1.7rem; border:2.5px solid rgba(255,255,255,0.5); position:relative; z-index:1; }
+  .header h1 { color:#fff; font-size:1.55rem; font-weight:800; margin-bottom:8px; letter-spacing:-0.01em; position:relative; z-index:1; }
+  .header p { color:rgba(255,255,255,0.92); font-size:0.9rem; line-height:1.5; max-width:340px; margin:0 auto; position:relative; z-index:1; }
+
+  /* Floating card overlap effect */
+  .body-wrap { padding:0 20px; margin-top:-28px; position:relative; z-index:2; }
+  .body { background:#ffffff; border-radius:18px; padding:32px 28px; box-shadow:0 8px 24px rgba(15,23,42,0.06); }
+
+  .greeting { font-size:1.05rem; font-weight:700; color:#1a1206; margin-bottom:14px; }
+  .para { color:#5c5347; font-size:0.92rem; line-height:1.75; margin-bottom:14px; }
+
+  .highlight-box { display:flex; gap:14px; align-items:flex-start; background:linear-gradient(135deg,#fff7ed,#fef3c7); border:1px solid rgba(249,115,22,0.22); border-radius:14px; padding:18px 20px; margin:22px 0; }
+  .highlight-icon { font-size:1.3rem; line-height:1; flex-shrink:0; }
+  .highlight-box p { color:#7c3d0e; font-size:0.86rem; line-height:1.65; }
+  .highlight-box strong { color:#ea580c; }
+
+  .divider { height:1px; background:#f0e8dc; margin:26px 0 22px; }
+
+  .signature { display:flex; align-items:center; gap:14px; }
+  .sig-dot { width:44px; height:44px; background:linear-gradient(135deg,#f97316,#f59e0b); border-radius:12px; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:0.95rem; flex-shrink:0; box-shadow:0 4px 12px rgba(249,115,22,0.35); }
   .sig-info { text-align:left; }
-  .sig-name { font-weight:700; color:#1a1206; font-size:0.95rem; }
-  .sig-role { font-size:0.75rem; color:#8c7355; }
+  .sig-name { font-weight:700; color:#1a1206; font-size:0.96rem; }
+  .sig-role { font-size:0.76rem; color:#8c7355; margin-top:2px; }
+
+  /* Footer / socials */
+  .footer { padding:28px 36px 34px; text-align:center; }
+  .footer-label { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#a89a80; margin-bottom:14px; }
+  .social-links { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
+  .social-btn { display:inline-flex; align-items:center; gap:6px; background:#fff7ed; border:1px solid #fde3c8; color:#c2410c; padding:9px 18px; border-radius:100px; font-size:0.8rem; font-weight:700; text-decoration:none; }
+  .footer-note { margin-top:22px; padding-top:18px; border-top:1px solid #f0e8dc; }
+  .footer-note p { color:#a89a80; font-size:0.74rem; line-height:1.7; }
+  .footer-note a { color:#ea580c; text-decoration:none; font-weight:600; }
+
+  @media(max-width:480px){ .header{padding:36px 24px 48px;} .body{padding:26px 20px;} .footer{padding:24px 20px 28px;} }
 </style>
 </head>
 <body>
 <div class="wrapper">
   <div class="card">
+
     <div class="header">
+      <span class="status-pill">✅ Delivered</span>
       <div class="avatar">👋</div>
       <h1>Message Received!</h1>
-      <p>Thank you for reaching out, ${data.firstName}. I'll be in touch shortly.</p>
+      <p>Thanks for reaching out, ${data.firstName} — I'll be in touch shortly.</p>
     </div>
-    <div class="body">
-      <p class="greeting">Hey ${data.firstName},</p>
-      <p class="para">I received your message and wanted to send you a quick confirmation. Your inquiry has been safely delivered to my inbox and I'm genuinely excited to read it.</p>
-      <p class="para">Whether it's about a project collaboration, a job opportunity, or something else — I take every conversation seriously and value the time you took to reach out.</p>
-      <div class="highlight-box">
-        <p>⏰ <strong>Response Time:</strong> I typically reply within <strong>24 hours</strong>, often sooner. In the meantime, feel free to browse my <strong>GitHub</strong> or connect on <strong>LinkedIn</strong>.</p>
-      </div>
-      <p class="para">I'll be reviewing your message soon. Talk to you then!</p>
-      <div class="divider"></div>
-      <div class="signature">
-        <div class="sig-dot">SP</div>
-        <div class="sig-info">
-          <div class="sig-name">Sandesh Patel</div>
-          <div class="sig-role">Frontend Developer · MERN Stack · Mumbai 🇮🇳</div>
+
+    <div class="body-wrap">
+      <div class="body">
+        <p class="greeting">Hey ${data.firstName},</p>
+        <p class="para">I received your message and wanted to send a quick confirmation. Your inquiry has landed safely in my inbox, and I'm genuinely excited to read it.</p>
+        <p class="para">Whether it's a project collaboration, a job opportunity, or just a hello — I take every conversation seriously and appreciate the time you took to reach out.</p>
+
+        <div class="highlight-box">
+          <span class="highlight-icon">⏰</span>
+          <p><strong>Response time:</strong> I typically reply within <strong>24 hours</strong>, often sooner. In the meantime, feel free to browse my GitHub or connect with me on LinkedIn.</p>
+        </div>
+
+        <p class="para">I'll be reviewing your message soon — talk to you then!</p>
+
+        <div class="divider"></div>
+
+        <div class="signature">
+          <div class="sig-dot">SP</div>
+          <div class="sig-info">
+            <div class="sig-name">Sandesh Patel</div>
+            <div class="sig-role">Full Stack Developer · MERN Stack · Mumbai 🇮🇳</div>
+          </div>
         </div>
       </div>
     </div>
+
     <div class="footer">
+      <div class="footer-label">Let's connect</div>
       <div class="social-links">
-        <a href="https://www.linkedin.com/in/sandeshpatel1/" class="social-btn">LinkedIn</a>
-        <a href="https://github.com/sandeshpatel1" class="social-btn">GitHub</a>
-        <a href="https://sandeshpatel1.github.io/MyPortfolio" class="social-btn">Portfolio</a>
+        <a href="https://www.linkedin.com/in/sandeshpatel1/" class="social-btn">💼 LinkedIn</a>
+        <a href="https://github.com/sandeshpatel1" class="social-btn">💻 GitHub</a>
+        <a href="https://sandeshpatel1.github.io/MyPortfolio" class="social-btn">🌐 Portfolio</a>
       </div>
-      <p style="margin-top:16px;">You received this because you contacted <a href="mailto:patelsandesh1@gmail.com">patelsandesh1@gmail.com</a><br/>via portfolio contact form.</p>
+      <div class="footer-note">
+        <p>You received this because you contacted <a href="mailto:patelsandesh1@gmail.com">patelsandesh1@gmail.com</a><br/>via the portfolio contact form.</p>
+      </div>
     </div>
+
   </div>
 </div>
 </body>
