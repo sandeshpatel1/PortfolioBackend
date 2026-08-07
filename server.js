@@ -285,7 +285,17 @@ app.post('/api/submit-form', contactLimiter, async (req, res) => {
     return res.status(400).json({ success: false, message: 'Name too long.' });
   }
 
-  const transporter = createTransporter();
+  let transporter;
+  try {
+    transporter = createTransporter();
+  } catch (setupErr) {
+    console.error('❌ Transporter setup error:', setupErr);
+    return res.status(500).json({
+      success: false,
+      message: 'Mail transporter failed to initialize.',
+      debug: setupErr.message, // TEMP: remove once mail flow is confirmed working
+    });
+  }
 
   if (!transporter) {
     // Dev mode: log but return success
