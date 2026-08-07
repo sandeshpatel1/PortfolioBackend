@@ -9,6 +9,14 @@ const validator = require('validator');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Catch anything that would otherwise crash/restart the process silently
+process.on('unhandledRejection', (reason) => {
+  console.error('🔥 Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('🔥 Uncaught Exception:', err);
+});
+
 // Render sits behind a reverse proxy that sets X-Forwarded-For.
 // Trust exactly 1 hop so express-rate-limit can correctly identify
 // unique clients instead of throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
@@ -330,8 +338,12 @@ app.post('/api/submit-form', contactLimiter, async (req, res) => {
     res.json({ success: true, message: 'Message sent successfully!' });
 
   } catch (err) {
-    console.error('❌ Email error:', err.message);
-    res.status(500).json({ success: false, message: 'Failed to send email. Please try again or email me directly.' });
+    console.error('❌ Email error:', err.message, '| code:', err.code, '| command:', err.command);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send email. Please try again or email me directly.',
+      debug: { message: err.message, code: err.code }, // TEMP: remove once mail flow is confirmed working
+    });
   }
 });
 
