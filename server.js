@@ -1,6 +1,5 @@
 require('dotenv').config();
 const express = require('express');
-const nodemailer = require('nodemailer');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
@@ -57,34 +56,50 @@ const contactLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// ─── Email Transporter (Gmail + App Password) ────────────────────────────────
-const createTransporter = () => {
-  // Uses Gmail with App Password (recommended)
-  // Set GMAIL_USER and GMAIL_APP_PASSWORD in .env
-  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-      },
-    });
+// ─── Email Sending (Brevo HTTP API) ──────────────────────────────────────────
+// Uses Brevo's transactional email API instead of raw SMTP — avoids Render's
+// rotating outbound IPs needing allowlisting, and sidesteps Gmail SMTP
+// connection timeouts entirely.
+//
+// Required env vars:
+//   BREVO_API_KEY   - from Brevo dashboard → SMTP & API → API Keys
+//   SENDER_EMAIL    - must be a VERIFIED sender in Brevo (Settings → Senders)
+//   SENDER_NAME     - optional, defaults to "Sandesh Patel"
+const sendBrevoEmail = async ({ toEmail, toName, subject, html, replyTo }) => {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) {
+    throw new Error('BREVO_API_KEY is not set');
   }
-  // Fallback: SMTP (Brevo, Mailgun, etc.)
-  if (process.env.SMTP_HOST) {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+
+  const senderEmail = process.env.SENDER_EMAIL || 'patelsandesh1@gmail.com';
+  const senderName = process.env.SENDER_NAME || 'Sandesh Patel';
+
+  const payload = {
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email: toEmail, name: toName || toEmail }],
+    subject,
+    htmlContent: html,
+  };
+  if (replyTo) payload.replyTo = { email: replyTo };
+
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': apiKey,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    const err = new Error(`Brevo API error ${res.status}: ${errBody}`);
+    err.status = res.status;
+    throw err;
   }
-  // Dev fallback: Ethereal (logs email to console, never actually sends)
-  console.warn('⚠️  No mail credentials set. Using Ethereal test account.');
-  return null;
+
+  return res.json();
 };
 
 // ─── Email Templates ──────────────────────────────────────────────────────────
@@ -293,43 +308,28 @@ app.post('/api/submit-form', contactLimiter, async (req, res) => {
     return res.status(400).json({ success: false, message: 'Name too long.' });
   }
 
-  let transporter;
-  try {
-    transporter = createTransporter();
-  } catch (setupErr) {
-    console.error('❌ Transporter setup error:', setupErr);
-    return res.status(500).json({
-      success: false,
-      message: 'Mail transporter failed to initialize.',
-      debug: setupErr.message, // TEMP: remove once mail flow is confirmed working
-    });
-  }
-
-  if (!transporter) {
+  if (!process.env.BREVO_API_KEY) {
     // Dev mode: log but return success
     console.log('\n📧 [DEV] Would have sent email:', { firstName, lastName, email, project, message });
     return res.json({ success: true, message: 'Message received (dev mode — no email sent).' });
   }
 
   try {
-    // Verify connection
-    await transporter.verify();
-
-    const ownerEmail = process.env.GMAIL_USER || process.env.SMTP_USER || 'patelsandesh1@gmail.com';
+    const ownerEmail = process.env.SENDER_EMAIL || 'patelsandesh1@gmail.com';
 
     // Send notification to owner
-    await transporter.sendMail({
-      from: `"Portfolio Contact" <${ownerEmail}>`,
-      to: ownerEmail,
+    await sendBrevoEmail({
+      toEmail: ownerEmail,
+      toName: 'Sandesh Patel',
       replyTo: email,
       subject: `📬 New Contact: ${project} — from ${firstName} ${lastName}`,
       html: buildOwnerEmail({ firstName, lastName, email, project, message }),
     });
 
     // Send auto-reply to sender
-    await transporter.sendMail({
-      from: `"Sandesh Patel" <${ownerEmail}>`,
-      to: email,
+    await sendBrevoEmail({
+      toEmail: email,
+      toName: `${firstName} ${lastName}`,
       subject: `Got your message, ${firstName}! ✅`,
       html: buildAutoReply({ firstName, lastName, email, project, message }),
     });
@@ -338,11 +338,11 @@ app.post('/api/submit-form', contactLimiter, async (req, res) => {
     res.json({ success: true, message: 'Message sent successfully!' });
 
   } catch (err) {
-    console.error('❌ Email error:', err.message, '| code:', err.code, '| command:', err.command);
+    console.error('❌ Email error:', err.message);
     res.status(500).json({
       success: false,
       message: 'Failed to send email. Please try again or email me directly.',
-      debug: { message: err.message, code: err.code }, // TEMP: remove once mail flow is confirmed working
+      debug: { message: err.message, status: err.status }, // TEMP: remove once mail flow is confirmed working
     });
   }
 });
@@ -419,7 +419,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`\n🚀 Portfolio Backend running on port ${PORT}`);
   console.log(`📍 Health: http://localhost:${PORT}/health`);
-  if (!process.env.GMAIL_USER) {
-    console.log('⚠️  Set GMAIL_USER + GMAIL_APP_PASSWORD in .env to enable email sending');
+  if (!process.env.BREVO_API_KEY) {
+    console.log('⚠️  Set BREVO_API_KEY + SENDER_EMAIL in .env to enable email sending');
   }
 });
