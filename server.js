@@ -9,6 +9,11 @@ const validator = require('validator');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Render sits behind a reverse proxy that sets X-Forwarded-For.
+// Trust exactly 1 hop so express-rate-limit can correctly identify
+// unique clients instead of throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+app.set('trust proxy', 1);
+
 // ─── Security Middleware ─────────────────────────────────────────────────────
 app.use(helmet());
 
